@@ -13,7 +13,7 @@ import java.util.*;
 
 public class Client {
     final static String API_KEY = "xxxx";
-    final static String API_SECRET = "xxxx";
+    final static byte[] API_SECRET = Base64.getDecoder().decode("xxxx");
     final static String TIMESTAMP = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
     final static String RECV_WINDOW = "5000";
 
@@ -79,7 +79,7 @@ public class Client {
      */
     private static String genPostSign(Map<String, Object> params) throws NoSuchAlgorithmException, InvalidKeyException {
         Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secret_key = new SecretKeySpec(API_SECRET.getBytes(), "HmacSHA256");
+        SecretKeySpec secret_key = new SecretKeySpec(API_SECRET, "HmacSHA256");
         sha256_HMAC.init(secret_key);
 
         String paramJson = JSON.toJSONString(params);
@@ -99,7 +99,7 @@ public class Client {
         String queryStr = TIMESTAMP + API_KEY + RECV_WINDOW + sb;
 
         Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
-        SecretKeySpec secret_key = new SecretKeySpec(API_SECRET.getBytes(), "HmacSHA256");
+        SecretKeySpec secret_key = new SecretKeySpec(API_SECRET, "HmacSHA256");
         sha256_HMAC.init(secret_key);
         return Base64.getEncoder().encodeToString(sha256_HMAC.doFinal(queryStr.getBytes()));
     }
