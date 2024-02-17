@@ -12,23 +12,21 @@ import java.time.ZonedDateTime;
 import java.util.*;
 
 public class Client {
-    final static String API_KEY = "xxxx";
-    final static byte[] API_SECRET = Base64.getDecoder().decode("xxxx");
+    final static String API_KEY = "xxx";
+    final static byte[] API_SECRET = Base64.getDecoder().decode("xxx");
     final static String TIMESTAMP = Long.toString(ZonedDateTime.now().toInstant().toEpochMilli());
     final static String RECV_WINDOW = "5000";
-
     final static String X_API_KEY = "X-API-KEY";
     final static String X_TIMESTAMP = "X-TIMESTAMP";
     final static String X_RECV_WINDOW = "X-RECV-WINDOW";
     final static String X_SIGN = "X-SIGN";
-
-    final static  String domain = "http://10.50.4.217:8091/api/v2/trading";
+    final static  String domain = "http://api.testnet.anboto.xyz/api/v2/trading";
 
 
     public static void main(String[] args) throws NoSuchAlgorithmException, InvalidKeyException {
         Client test = new Client();
 
-        test.placeOrder();
+        test.placeManyOrders();
 
 //        encryptionTest.getOpenOrder();
     }
@@ -37,14 +35,49 @@ public class Client {
         Map<String, Object> map = new HashMap<>();
         map.put("client_order_id",Long.toString(System.currentTimeMillis()));
         map.put("symbol", "BTCUSDT");
-        map.put("side", 1);
+        map.put("side", "BUY");
         map.put("asset_category", "SPOT");
-        map.put("exchange", 1);
+        map.put("exchange", "BINANCE");
         map.put("strategy", "TWAP");
         map.put("quantity", 0.001);
-        map.put("type", "1");
 
 
+        send("/order/create",map);
+    }
+
+    public void cancelOrder() throws NoSuchAlgorithmException, InvalidKeyException {
+        Map<String, Object> map = new HashMap<>();
+        map.put("client_order_id","1708169120400");
+
+        send("/order/cancel",map);
+    }
+
+    public void placeManyOrders() throws NoSuchAlgorithmException, InvalidKeyException {
+        Map<String, Object> o1 = new HashMap<>();
+        o1.put("client_order_id",Long.toString(System.currentTimeMillis()));
+        o1.put("symbol", "BTCUSDT");
+        o1.put("side", "BUY");
+        o1.put("asset_category", "SPOT");
+        o1.put("exchange", "BINANCE");
+        o1.put("strategy", "TWAP");
+        o1.put("quantity", 0.001);
+
+        Map<String, Object> o2 = new HashMap<>();
+        o2.put("client_order_id",Long.toString(System.currentTimeMillis()));
+        o2.put("symbol", "ETHUSDT");
+        o2.put("side", "SELL");
+        o2.put("asset_category", "SPOT");
+        o2.put("exchange", "BINANCE");
+        o2.put("strategy", "TWAP");
+        o2.put("quantity", 0.01);
+
+        Map<String, Object> many = new HashMap<>();
+        many.put("orders", List.of(o1,o2));
+
+        send("/order/createMany",many);
+    }
+
+    private static void send(String path, Map<String, Object> map) throws NoSuchAlgorithmException, InvalidKeyException {
         String signature = genPostSign(map);
         String jsonMap = JSON.toJSONString(map);
 
@@ -52,7 +85,7 @@ public class Client {
         MediaType mediaType = MediaType.parse("application/json");
 
         Request request = new Request.Builder()
-                .url(domain+"/order/create")
+                .url(domain+path)
                 .post(RequestBody.create(mediaType, jsonMap))
                 .addHeader(X_API_KEY, API_KEY)
                 .addHeader(X_SIGN, signature)
@@ -64,11 +97,12 @@ public class Client {
         try {
             Response response = call.execute();
 
-            System.out.println(response.body().string());
+            System.out.println("API RESPONSE: ["+response.message() +"] :" +response.body().string());
         }catch (IOException e){
             e.printStackTrace();
         }
     }
+
 
     /**
      * The way to generate the sign for POST requests
