@@ -164,7 +164,6 @@ public class Client {
      */
     private static String genGetSign(String queryStr) throws NoSuchAlgorithmException, InvalidKeyException {
         String signStr = TIMESTAMP + API_KEY + RECV_WINDOW + queryStr;
-        System.out.println(signStr);
         Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
         SecretKeySpec secret_key = new SecretKeySpec(API_SECRET, "HmacSHA256");
         sha256_HMAC.init(secret_key);
