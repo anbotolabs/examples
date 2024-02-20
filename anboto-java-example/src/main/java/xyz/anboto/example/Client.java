@@ -27,8 +27,11 @@ public class Client {
         Client test = new Client();
 
         test.placeManyOrders();
+        test.getOrder();
+    }
 
-//        encryptionTest.getOpenOrder();
+    public void getOrder() throws NoSuchAlgorithmException, InvalidKeyException {
+        sendGet("/order/byId",Map.of("orderIds","123,456"));
     }
 
     public void placeOrder() throws NoSuchAlgorithmException, InvalidKeyException {
@@ -42,14 +45,15 @@ public class Client {
         map.put("quantity", 0.001);
 
 
-        send("/order/create",map);
+        sendPost("/order/create",map);
     }
 
     public void cancelOrder() throws NoSuchAlgorithmException, InvalidKeyException {
         Map<String, Object> map = new HashMap<>();
         map.put("client_order_id","1708169120400");
 
-        send("/order/cancel",map);
+        sendPost("/order/cancel",map);
+
     }
 
     public void placeManyOrders() throws NoSuchAlgorithmException, InvalidKeyException {
@@ -74,10 +78,10 @@ public class Client {
         Map<String, Object> many = new HashMap<>();
         many.put("orders", List.of(o1,o2));
 
-        send("/order/createMany",many);
+        sendPost("/order/createMany",many);
     }
 
-    private static void send(String path, Map<String, Object> map) throws NoSuchAlgorithmException, InvalidKeyException {
+    private static void sendPost(String path, Map<String, Object> map) throws NoSuchAlgorithmException, InvalidKeyException {
         String signature = genPostSign(map);
         String jsonMap = JSON.toJSONString(map);
 
@@ -97,6 +101,36 @@ public class Client {
         try {
             Response response = call.execute();
 
+            System.out.println("API RESPONSE: ["+response.message() +"] :" +response.body().string());
+        }catch (IOException e){
+            e.printStackTrace();
+        }
+    }
+
+    private static void sendGet(String path, Map<String, Object> params) throws NoSuchAlgorithmException, InvalidKeyException {
+
+        OkHttpClient client = new OkHttpClient().newBuilder().build();
+
+        HttpUrl.Builder urlBuilder
+                = HttpUrl.parse(domain + path).newBuilder();
+
+        params.forEach( (k,v) ->
+                urlBuilder.addQueryParameter(k, v.toString()));
+
+        HttpUrl url = urlBuilder.build();
+        String signature = genGetSign(Objects.requireNonNullElseGet(url.query(), () ->""));
+        urlBuilder.addQueryParameter("id", "1");
+        Request request = new Request.Builder()
+                .url(url.toString())
+                .addHeader(X_API_KEY, API_KEY)
+                .addHeader(X_SIGN, signature)
+                .addHeader(X_TIMESTAMP, TIMESTAMP)
+                .addHeader(X_RECV_WINDOW, RECV_WINDOW)
+                .addHeader("Content-Type", "application/json")
+                .build();
+        Call call = client.newCall(request);
+        try {
+            Response response = call.execute();
             System.out.println("API RESPONSE: ["+response.message() +"] :" +response.body().string());
         }catch (IOException e){
             e.printStackTrace();
@@ -123,19 +157,18 @@ public class Client {
 
     /**
      * The way to generate the sign for GET requests
-     * @param params: Map input parameters
+     * @param queryStr: Map input parameters
      * @return signature used to be a parameter in the header
      * @throws NoSuchAlgorithmException
      * @throws InvalidKeyException
      */
-    private static String genGetSign(Map<String, Object> params) throws NoSuchAlgorithmException, InvalidKeyException {
-        StringBuilder sb = genQueryStr(params);
-        String queryStr = TIMESTAMP + API_KEY + RECV_WINDOW + sb;
-
+    private static String genGetSign(String queryStr) throws NoSuchAlgorithmException, InvalidKeyException {
+        String signStr = TIMESTAMP + API_KEY + RECV_WINDOW + queryStr;
+        System.out.println(signStr);
         Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
         SecretKeySpec secret_key = new SecretKeySpec(API_SECRET, "HmacSHA256");
         sha256_HMAC.init(secret_key);
-        return Base64.getEncoder().encodeToString(sha256_HMAC.doFinal(queryStr.getBytes()));
+        return Base64.getEncoder().encodeToString(sha256_HMAC.doFinal(signStr.getBytes()));
     }
 
     /**
