@@ -2,6 +2,7 @@ package xyz.anboto.example;
 
 import com.alibaba.fastjson.JSON;
 import okhttp3.*;
+import org.jetbrains.annotations.NotNull;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -10,6 +11,8 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class Client {
     final static String API_KEY = "xxx";
@@ -20,68 +23,96 @@ public class Client {
     final static String X_TIMESTAMP = "X-TIMESTAMP";
     final static String X_RECV_WINDOW = "X-RECV-WINDOW";
     final static String X_SIGN = "X-SIGN";
-    final static  String domain = "http://api.testnet.anboto.xyz/api/v2/trading";
+
+    final static AtomicInteger IDS = new AtomicInteger();
+    protected static final String TEST_NET = "https://api.testnet.anboto.xyz";
+    final static  String domain = TEST_NET + "/api/v2/trading";
 
 
     public static void main(String[] args) throws NoSuchAlgorithmException, InvalidKeyException {
         Client test = new Client();
 
+        long orderId = test.placeOrder();
+        test.cancelOrder(orderId);
         test.placeManyOrders();
-        test.getOrder();
+
+        List<Long> openOrders = test.getActiveOrders();
+        System.out.println(openOrders.size() +" open orders : "+openOrders);
+
+        test.cancelMany(openOrders);
+
     }
 
-    public void getOrder() throws NoSuchAlgorithmException, InvalidKeyException {
-        sendGet("/order/byId",Map.of("orderIds","123,456"));
+    public long placeOrder() throws NoSuchAlgorithmException, InvalidKeyException {
+        Map<String, Object> map = orderMap("BTCUSDT","BUY",0.001);
+        Map<String, Object> response = JSON.parseObject(post("/order/create", map), Map.class); ;
+
+        return Long.parseLong(response.get("order_id").toString());
     }
 
-    public void placeOrder() throws NoSuchAlgorithmException, InvalidKeyException {
+    public List<Long> getActiveOrders() throws NoSuchAlgorithmException, InvalidKeyException {
+        Map<String, Object> response = get("/order/open", Collections.emptyMap());
+
+        System.out.println("ACTIVE: " + response);
+
+        List<Map<String,Object>> orders = (List<Map<String,Object>>)response.get("orders");
+        return orders.stream().map(o -> Long.parseLong(o.get("order_id").toString())).collect(Collectors.toList());
+    }
+
+    public void cancelOrder(long orderId) throws NoSuchAlgorithmException, InvalidKeyException {
         Map<String, Object> map = new HashMap<>();
-        map.put("client_order_id",Long.toString(System.currentTimeMillis()));
-        map.put("symbol", "BTCUSDT");
-        map.put("side", "BUY");
-        map.put("asset_category", "SPOT");
-        map.put("exchange", "BINANCE");
-        map.put("strategy", "TWAP");
-        map.put("quantity", 0.001);
+        map.put("order_id",orderId);
 
-
-        sendPost("/order/create",map);
+        post("/order/cancel",map);
     }
 
-    public void cancelOrder() throws NoSuchAlgorithmException, InvalidKeyException {
+    public void cancelMany(List<Long> orderIds) throws NoSuchAlgorithmException, InvalidKeyException {
         Map<String, Object> map = new HashMap<>();
-        map.put("client_order_id","1708169120400");
+        List<Map<String, Object>> cancelRequests = new ArrayList<>();
+        for(long id : orderIds){
+            Map<String, Object> req = new HashMap<>();
+            req.put("order_id",id);
+            cancelRequests.add(req);
+        }
+        map.put("orders", cancelRequests);
 
-        sendPost("/order/cancel",map);
-
+        List<Map<String, Object>> response = JSON.parseObject(post("/order/cancelMany",map), List.class);
+        System.out.println(response.size() +" cancel requests : "+ response);
     }
 
     public void placeManyOrders() throws NoSuchAlgorithmException, InvalidKeyException {
-        Map<String, Object> o1 = new HashMap<>();
-        o1.put("client_order_id",Long.toString(System.currentTimeMillis()));
-        o1.put("symbol", "BTCUSDT");
-        o1.put("side", "BUY");
-        o1.put("asset_category", "SPOT");
-        o1.put("exchange", "BINANCE");
-        o1.put("strategy", "TWAP");
-        o1.put("quantity", 0.001);
+        List<Map<String, Object>> ordersList = new ArrayList<>();
 
-        Map<String, Object> o2 = new HashMap<>();
-        o2.put("client_order_id",Long.toString(System.currentTimeMillis()));
-        o2.put("symbol", "ETHUSDT");
-        o2.put("side", "SELL");
-        o2.put("asset_category", "SPOT");
-        o2.put("exchange", "BINANCE");
-        o2.put("strategy", "TWAP");
-        o2.put("quantity", 0.01);
+        // Loop 200 times
+        for (int i = 0; i < 200; i++) {
+            // Call the orderMap function and add the result to the list
+            Map<String, Object> o1 = orderMap("BTCUSDT", "BUY", 0.001);
+            ordersList.add(o1);
+        }
 
         Map<String, Object> many = new HashMap<>();
-        many.put("orders", List.of(o1,o2));
+        many.put("orders", ordersList);
 
-        sendPost("/order/createMany",many);
+        Map<String, Object> response = JSON.parseObject(post("/order/createMany", many), Map.class);
+        List<Map<String, Object>> statuses = (List<Map<String, Object>>)response.get("orders");
+        System.out.println(statuses.size() +" order requests : "+ response);
     }
 
-    private static void sendPost(String path, Map<String, Object> map) throws NoSuchAlgorithmException, InvalidKeyException {
+    @NotNull
+    private static Map<String, Object> orderMap(String symbol, String side, double qty) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("client_order_id",IDS.incrementAndGet()+"_"+Long.toString(System.currentTimeMillis()));
+        map.put("symbol", symbol);
+        map.put("side", side);
+        map.put("asset_category", "SPOT");
+        map.put("exchange", "BINANCE");
+        map.put("strategy", "TWAP");
+        map.put("quantity", qty);
+        map.put("params", Map.of("duration_seconds", 120));
+
+        return map;
+    }
+    private static String post(String path, Map<String, Object> map) throws NoSuchAlgorithmException, InvalidKeyException {
         String signature = genPostSign(map);
         String jsonMap = JSON.toJSONString(map);
 
@@ -98,30 +129,26 @@ public class Client {
                 .addHeader("Content-Type", "application/json")
                 .build();
         Call call = client.newCall(request);
-        try {
-            Response response = call.execute();
-
-            System.out.println("API RESPONSE: ["+response.message() +"] :" +response.body().string());
+        try(Response response = call.execute()) {
+            String responseJson = response.body().string();
+            System.out.println("API RESPONSE: ["+response.message() +"] :" + responseJson);
+            return responseJson;
         }catch (IOException e){
             e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
 
-    private static void sendGet(String path, Map<String, Object> params) throws NoSuchAlgorithmException, InvalidKeyException {
+    private static Map<String,Object> get(String path, Map<String, Object> params) throws NoSuchAlgorithmException, InvalidKeyException {
+        String queryString = genQueryStr(params);
+        String signature = genGetSign(queryString);
 
         OkHttpClient client = new OkHttpClient().newBuilder().build();
 
-        HttpUrl.Builder urlBuilder
-                = HttpUrl.parse(domain + path).newBuilder();
-
-        params.forEach( (k,v) ->
-                urlBuilder.addQueryParameter(k, v.toString()));
-
-        HttpUrl url = urlBuilder.build();
-        String signature = genGetSign(Objects.requireNonNullElseGet(url.query(), () ->""));
-        urlBuilder.addQueryParameter("id", "1");
+        String queryParams = queryString==null?"":("?"+queryString);
         Request request = new Request.Builder()
-                .url(url.toString())
+                .url(domain+path+queryParams)
+                .get()
                 .addHeader(X_API_KEY, API_KEY)
                 .addHeader(X_SIGN, signature)
                 .addHeader(X_TIMESTAMP, TIMESTAMP)
@@ -129,14 +156,15 @@ public class Client {
                 .addHeader("Content-Type", "application/json")
                 .build();
         Call call = client.newCall(request);
-        try {
-            Response response = call.execute();
-            System.out.println("API RESPONSE: ["+response.message() +"] :" +response.body().string());
+        try(Response response = call.execute()) {
+            String responseJson = response.body().string();
+            System.out.println("API RESPONSE: ["+response.message() +"] :" + responseJson);
+            return JSON.parseObject(responseJson, Map.class);
         }catch (IOException e){
             e.printStackTrace();
+            throw new RuntimeException(e);
         }
     }
-
 
     /**
      * The way to generate the sign for POST requests
@@ -157,17 +185,19 @@ public class Client {
 
     /**
      * The way to generate the sign for GET requests
-     * @param queryStr: Map input parameters
+     * @param queryString: The queryString
      * @return signature used to be a parameter in the header
      * @throws NoSuchAlgorithmException
      * @throws InvalidKeyException
      */
-    private static String genGetSign(String queryStr) throws NoSuchAlgorithmException, InvalidKeyException {
-        String signStr = TIMESTAMP + API_KEY + RECV_WINDOW + queryStr;
+    private static String genGetSign(String queryString) throws NoSuchAlgorithmException, InvalidKeyException {
+
+        String sign = TIMESTAMP + API_KEY + RECV_WINDOW + (queryString==null?"":queryString);
+
         Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
         SecretKeySpec secret_key = new SecretKeySpec(API_SECRET, "HmacSHA256");
         sha256_HMAC.init(secret_key);
-        return Base64.getEncoder().encodeToString(sha256_HMAC.doFinal(signStr.getBytes()));
+        return Base64.getEncoder().encodeToString(sha256_HMAC.doFinal(sign.getBytes()));
     }
 
     /**
@@ -190,7 +220,9 @@ public class Client {
      * @param map
      * @return
      */
-    private static StringBuilder genQueryStr(Map<String, Object> map) {
+    private static String genQueryStr(Map<String, Object> map) {
+        if(map == null  || map.isEmpty()) return null;
+
         Set<String> keySet = map.keySet();
         Iterator<String> iter = keySet.iterator();
         StringBuilder sb = new StringBuilder();
@@ -202,6 +234,6 @@ public class Client {
                     .append("&");
         }
         sb.deleteCharAt(sb.length() - 1);
-        return sb;
+        return sb.toString();
     }
 }
