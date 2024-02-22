@@ -23,6 +23,7 @@ public class Client {
     final static String X_TIMESTAMP = "X-TIMESTAMP";
     final static String X_RECV_WINDOW = "X-RECV-WINDOW";
     final static String X_SIGN = "X-SIGN";
+
     final static AtomicInteger IDS = new AtomicInteger();
     protected static final String TEST_NET = "https://api.testnet.anboto.xyz";
     final static  String domain = TEST_NET + "/api/v2/trading";
