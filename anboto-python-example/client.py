@@ -271,7 +271,7 @@ def main():
 
     time.sleep(1)
     # Example: Cancel order
-    cancel_orders = [{"client_order_id": _id} for _id in [id1, id2]]
+    cancel_orders = {"orders": [{"client_order_id": _id} for _id in [id1, id2]]}
     cancel_response = trading_api.cancel_many_orders(cancel_orders)
     print("# Cancel many orders")
     print(cancel_response)
